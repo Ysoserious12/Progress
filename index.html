@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Student Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<!-- AUTH -->
+<div id="auth-screen" class="center">
+  <h1 class="title">Student Dashboard</h1>
+  <div class="auth-row">
+    <button class="btn" onclick="login('Dev')">Dev</button>
+    <button class="btn" onclick="login('Mansvi')">Mansvi</button>
+  </div>
+</div>
+
+<!-- TOPBAR -->
+<div id="topbar" class="hidden topbar">
+  <div class="left">
+    <strong id="user-name"></strong>
+  </div>
+  <div class="right">
+    <button class="btn small" onclick="openPdfViewer()">View 4th Sem Calendar</button>
+    <button class="btn small" onclick="logout()">Logout</button>
+  </div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashboard" class="hidden">
+  <nav class="menu">
+    <button class="btn" onclick="showSection('home')">Home</button>
+    <button class="btn" onclick="showSection('overview')">Overview</button>
+    <button class="btn" onclick="showSection('tasks')">Tasks</button>
+    <button class="btn" onclick="showSection('academics')">Marks</button>
+    <button class="btn" onclick="showSection('attendance')">Attendance</button>
+    <button class="btn" onclick="showSection('timetable')">Timetable</button>
+    <button class="btn" onclick="showSection('events')">Events</button>
+    <button class="btn" onclick="showSection('exams')">Exams</button>
+  </nav>
+
+  <main>
+    <section id="home"></section>
+    <section id="overview" class="hidden"></section>
+    <section id="tasks" class="hidden"></section>
+    <section id="academics" class="hidden"></section>
+    <section id="attendance" class="hidden"></section>
+    <section id="timetable" class="hidden"></section>
+    <section id="events" class="hidden"></section>
+    <section id="exams" class="hidden"></section>
+  </main>
+</div>
+
+<!-- PDF MODAL -->
+<div id="pdfModal" class="modal hidden" onclick="closePdfViewer(event)">
+  <div class="modal-body" onclick="event.stopPropagation()">
+    <button class="btn small" onclick="closePdfViewer()">Close</button>
+    <iframe id="pdfFrame"></iframe>
+  </div>
+</div>
+
+<script src="assets/storage.js"></script>
+<script src="assets/ui.js"></script>
+</body>
+</html>
