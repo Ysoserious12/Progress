@@ -601,528 +601,460 @@ function getWeekNumber(d){
    PART 3 / 4
    ---------------------------------------------------------
    Contents:
-   - Academics / Marks
-   - Attendance (date-based, multi-class support)
+   - Academics (5-Slot Marks + Subject Totals)
+   - Attendance (Detailed Stats + Month Navigation)
 ========================================================= */
 
-/* =========================================================
-   ACADEMICS / MARKS
-========================================================= */
+window.attViewDate = window.attViewDate || {};
 
-async function renderAcademics(){
+/* ===================== ACADEMICS (MARKS) ===================== */
+
+async function renderAcademics() {
   const sec = document.getElementById("academics");
-  if(!sec) return;
+  if (!sec) return;
 
-  const acad = await getAcademics();
+  const acad = await getAcademics() || { subjects: [] };
+  const subjects = acad.subjects || [];
 
   sec.innerHTML = `
-    <h2>Marks</h2>
-
-    <div class="card">
-      <input id="sub_name" placeholder="Subject name">
-      <input id="sub_credit" type="number" placeholder="Credits">
-      <button class="btn small" onclick="addSubject()">Add Subject</button>
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px">
+       <h2>Marks</h2>
+       <button class="btn small" onclick="toggleAddSubject()">+ Add Subject</button>
     </div>
 
-    ${acad.subjects.length
-      ? acad.subjects.map(s => renderSubjectCard(s)).join("")
-      : `<div class="card">No subjects added yet</div>`
-    }
+    <div class="card" style="margin-bottom:20px; display:none" id="add_sub_input">
+      <input id="new_sub_name" placeholder="Subject Name" style="width:70%">
+      <button class="btn small" onclick="saveSubject()">Save</button>
+    </div>
+
+    <div id="subjects_list"></div>
   `;
-}
 
-/* ---------- SUBJECT CARD ---------- */
+  const list = document.getElementById("subjects_list");
+  
+  subjects.forEach((s, idx) => {
+    // FIX: Ensure scores structure exists for old or new subjects
+    if (!s.scores) {
+      s.scores = {
+        ut1: { m: 0, t: 0 }, ut2: { m: 0, t: 0 },
+        ta1: { m: 0, t: 0 }, ta2: { m: 0, t: 0 },
+        end: { m: 0, t: 0 }
+      };
+    }
 
-function renderSubjectCard(subject){
-  const parts = ["ut1","ut2","ta1","ta2","end"];
-  const rows = parts.map(p=>{
-    const m = subject.marks?.[p] || {};
-    return `
-      <div style="margin-bottom:6px">
-        <b>${p.toUpperCase()}</b> :
-        <input size="3" value="${m.scored ?? ""}"
-          onchange="setMark('${subject.id}','${p}',this.value,true)">
-        /
-        <input size="3" value="${m.outOf ?? ""}"
-          onchange="setMark('${subject.id}','${p}',this.value,false)">
+    let subObt = 0;
+    let subMax = 0;
+    const slots = [
+      { key: 'ut1', label: 'UT 1' }, 
+      { key: 'ut2', label: 'UT 2' }, 
+      { key: 'ta1', label: 'TA 1' }, 
+      { key: 'ta2', label: 'TA 2' }, 
+      { key: 'end', label: 'End Sem' }
+    ];
+
+    let slotsHtml = slots.map(slot => {
+      const obt = parseFloat(s.scores[slot.key].m) || 0;
+      const tot = parseFloat(s.scores[slot.key].t) || 0;
+      subObt += obt;
+      subMax += tot;
+      
+      return `
+        <div style="display:grid; grid-template-columns: 1fr 1.2fr 1.2fr; gap:8px; align-items:center; margin-bottom:6px">
+          <span style="font-size:12px; opacity:0.8">${slot.label}</span>
+          <input type="number" placeholder="Obt" value="${obt}" 
+            onchange="updateDetailedMarks(${idx}, '${slot.key}', 'm', this.value)">
+          <input type="number" placeholder="Total" value="${tot}" 
+            onchange="updateDetailedMarks(${idx}, '${slot.key}', 't', this.value)">
+        </div>
+      `;
+    }).join('');
+
+    const subPct = subMax > 0 ? Math.round((subObt / subMax) * 100) : 0;
+
+    list.innerHTML += `
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(0,255,136,0.1); padding-bottom:8px">
+          <strong>${escapeHtml(s.name)}</strong>
+          <div style="text-align:right">
+            <span style="font-weight:bold; color:#00ff88; font-size:18px">${subPct}%</span>
+            <button class="btn tiny" onclick="deleteSubject(${idx})" style="margin-left:10px; color:#ff5555">Del</button>
+          </div>
+        </div>
+        
+        ${slotsHtml}
+        
+        <div style="margin-top:10px; padding-top:8px; border-top:1px dashed rgba(255,255,255,0.1); display:flex; justify-content:space-between; align-items:center">
+          <span style="font-size:11px; opacity:0.6; text-transform:uppercase">Subject Total</span>
+          <span style="font-weight:bold; font-size:14px; color:#00ff88">${subObt} / ${subMax}</span>
+        </div>
       </div>
     `;
-  }).join("");
-
-  const total = sumSubject(subject);
-
-  return `
-    <div class="card">
-      <div style="display:flex;justify-content:space-between">
-        <b>${escapeHtml(subject.name)}</b>
-        <button class="btn tiny" onclick="deleteSubject('${subject.id}')">
-          Delete
-        </button>
-      </div>
-
-      <div style="opacity:.7">${subject.credits} credits</div>
-
-      <div style="margin-top:8px">${rows}</div>
-
-      <div style="margin-top:8px">
-        <b>Total:</b> ${total.scored} / ${total.outOf}
-      </div>
-    </div>
-  `;
+  });
 }
 
-/* ---------- ADD / DELETE SUBJECT ---------- */
+function toggleAddSubject() {
+  const div = document.getElementById("add_sub_input");
+  div.style.display = div.style.display === "none" ? "block" : "none";
+}
 
-async function addSubject(){
-  const n = document.getElementById("sub_name");
-  const c = document.getElementById("sub_credit");
-  if(!n.value.trim() || !c.value) return;
-
+async function saveSubject() {
+  const inp = document.getElementById("new_sub_name");
+  if (!inp || !inp.value.trim()) return;
   const acad = await getAcademics();
-  acad.subjects.push({
-    id: uid(),
-    name: n.value.trim(),
-    credits: Number(c.value),
-    marks: {}
+  acad.subjects = acad.subjects || [];
+  acad.subjects.push({ 
+    id: uid(), 
+    name: inp.value.trim(), 
+    scores: {
+      ut1: { m:0, t:0 }, ut2: { m:0, t:0 },
+      ta1: { m:0, t:0 }, ta2: { m:0, t:0 },
+      end: { m:0, t:0 }
+    }
   });
-
   await saveAcademics(acad);
   renderAcademics();
 }
 
-async function deleteSubject(id){
-  if(!confirm("Delete subject permanently?")) return;
-
+async function updateDetailedMarks(subIdx, slotKey, field, val) {
   const acad = await getAcademics();
-  acad.subjects = acad.subjects.filter(s=>s.id!==id);
+  if (acad.subjects[subIdx]) {
+    acad.subjects[subIdx].scores[slotKey][field] = parseFloat(val) || 0;
+    await saveAcademics(acad);
+    renderAcademics();
+  }
+}
+
+async function deleteSubject(idx) {
+  if (!confirm("Delete subject?")) return;
+  const acad = await getAcademics();
+  acad.subjects.splice(idx, 1);
   await saveAcademics(acad);
-
-  const att = await getAttendance();
-  delete att[id];
-  await saveAttendance(att);
-
   renderAcademics();
 }
 
-/* ---------- MARKS HELPERS ---------- */
+/* ===================== ATTENDANCE ===================== */
 
-async function setMark(id, part, val, isScored){
-  const acad = await getAcademics();
-  const s = acad.subjects.find(x=>x.id===id);
-  if(!s) return;
-
-  s.marks[part] ??= {};
-  if(isScored) s.marks[part].scored = Number(val)||0;
-  else s.marks[part].outOf = Number(val)||0;
-
-  await saveAcademics(acad);
-}
-
-function sumSubject(s){
-  let scored=0,outOf=0;
-  Object.values(s.marks||{}).forEach(m=>{
-    scored += Number(m.scored)||0;
-    outOf  += Number(m.outOf)||0;
-  });
-  return {scored,outOf};
-}
-
-/* =========================================================
-   ATTENDANCE
-   - Date selectable
-   - Multiple classes per day supported
-========================================================= */
-
-async function renderAttendance(){
+async function renderAttendance() {
   const sec = document.getElementById("attendance");
-  if(!sec) return;
+  if (!sec) return;
 
-  const acad = await getAcademics();
-  const att  = await getAttendance();
+  try {
+    const acad = await getAcademics() || { subjects: [] };
+    const att = await getAttendance() || {};
+    const subjects = acad.subjects || [];
 
-  let overallP = 0, overallT = 0;
-
-  sec.innerHTML = `
-    <h2>Attendance</h2>
-    <div class="card">
-      <label>Select Date:</label>
-      <input type="date" id="att_date" value="${todayKey()}">
-    </div>
-  `;
-
-  acad.subjects.forEach(s=>{
-    const hist = att[s.id] || {};
-    let p=0,t=0;
-
-    Object.values(hist).forEach(v=>{
-      p += v.present || 0;
-      t += (v.present||0) + (v.absent||0);
+    let overallP = 0, overallT = 0;
+    subjects.forEach(s => {
+      const hist = att[s.id] || {};
+      Object.values(hist).forEach(entries => {
+        if (Array.isArray(entries)) {
+          entries.forEach(e => {
+            if (e.status === "present") { overallP++; overallT++; }
+            if (e.status === "absent") { overallT++; }
+          });
+        }
+      });
     });
 
-    overallP += p;
-    overallT += t;
+    const overallPct = overallT > 0 ? Math.round((overallP / overallT) * 100) : 0;
 
-    const pct = t ? Math.round(p/t*100) : 0;
-    const col = pct>=75 ? "#00ff88" : "#ff5555";
-
-    sec.innerHTML += `
-      <div class="card">
-        <div style="display:flex;justify-content:space-between">
-          <b>${escapeHtml(s.name)}</b>
-          <span style="color:${col}">${pct}%</span>
-        </div>
-
-        <div style="margin-top:6px">
-          <button class="btn tiny"
-            onclick="markAttendance('${s.id}','present')">
-            + Present
-          </button>
-          <button class="btn tiny"
-            onclick="markAttendance('${s.id}','absent')">
-            + Absent
-          </button>
-        </div>
-
-        <div style="margin-top:6px;opacity:.8">
-          ${renderAttendanceHistory(s.id, hist)}
+    let html = `
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:15px">
+        <h2 style="margin:0">Attendance</h2>
+        <div style="text-align:right">
+          <div style="font-size:18px; font-weight:bold; color:#00ff88">${overallPct}%</div>
+          <div style="font-size:11px; opacity:0.6">Total: ${overallP}/${overallT}</div>
         </div>
       </div>
     `;
-  });
 
-  const op = overallT ? Math.round(overallP/overallT*100) : 0;
-  sec.innerHTML += `
-    <div class="card">
-      <b>Overall Attendance:</b>
-      <span style="color:${op>=75?'#00ff88':'#ff5555'}">${op}%</span>
-    </div>
-  `;
+    if (subjects.length === 0) {
+      html += `<div class="card">Add subjects in Marks tab first.</div>`;
+    } else {
+      subjects.forEach(s => {
+        const hist = att[s.id] || {};
+        let p = 0, t = 0;
+        Object.values(hist).forEach(arr => {
+          if (Array.isArray(arr)) {
+            arr.forEach(v => {
+              if (v.status === "present") { p++; t++; }
+              if (v.status === "absent") { t++; }
+            });
+          }
+        });
+        const pct = t ? Math.round((p / t) * 100) : 0;
+
+        html += `
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div>
+                <div style="font-weight:bold">${escapeHtml(s.name)}</div>
+                <div style="font-size:11px; opacity:0.7">${p}/${t} Classes</div>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px">
+                <span style="font-weight:bold; font-size:18px; color:${pct>=75?'#00ff88':'#ff5555'}">${pct}%</span>
+                <button class="btn tiny" onclick="toggleAttendanceAdder('${s.id}')">+</button>
+                <button class="btn tiny" onclick="toggleAttendanceCalendar('${s.id}')">📅</button>
+              </div>
+            </div>
+
+            <div id="add_area_${s.id}" style="display:none; margin-top:12px; border-top:1px solid rgba(255,255,255,0.1); padding-top:10px;">
+               <input type="date" id="date_inp_${s.id}" value="${todayKey()}" style="width:100%; margin-bottom:8px">
+               <div style="display:flex; gap:5px;">
+                  <button class="btn tiny" style="flex:1; background:#004422" onclick="quickAdd('${s.id}','present')">Present</button>
+                  <button class="btn tiny" style="flex:1; background:#441111" onclick="quickAdd('${s.id}','absent')">Absent</button>
+                  <button class="btn tiny" style="flex:1; background:#444411" onclick="quickAdd('${s.id}','noclass')">No Class</button>
+               </div>
+            </div>
+
+            <div id="cal_wrap_${s.id}" style="display:none; margin-top:12px;"></div>
+          </div>
+        `;
+      });
+    }
+    sec.innerHTML = html;
+  } catch (err) {
+    sec.innerHTML = `<h2>Attendance</h2><div class="card">Error: ${err.message}</div>`;
+  }
 }
 
-/* ---------- MARK ATTENDANCE ---------- */
+/* ===================== LOGIC HELPERS ===================== */
 
-async function markAttendance(subjectId, type){
+function toggleAttendanceAdder(subjectId) {
+  const el = document.getElementById("add_area_" + subjectId);
+  if (el) el.style.display = (el.style.display === "none") ? "block" : "none";
+}
+
+async function quickAdd(subjectId, status) {
+  const dateVal = document.getElementById("date_inp_" + subjectId).value || todayKey();
   const att = await getAttendance();
-  const date =
-    document.getElementById("att_date")?.value || todayKey();
-
-  att[subjectId] ??= {};
-  att[subjectId][date] ??= { present:0, absent:0 };
-
-  if(type==="present") att[subjectId][date].present++;
-  if(type==="absent")  att[subjectId][date].absent++;
-
+  att[subjectId] = att[subjectId] || {};
+  att[subjectId][dateVal] = att[subjectId][dateVal] || [];
+  att[subjectId][dateVal].push({ status });
   await saveAttendance(att);
   renderAttendance();
 }
 
-/* ---------- ATTENDANCE HISTORY ---------- */
-
-function renderAttendanceHistory(subjectId, history){
-  const entries = Object.entries(history);
-  if(!entries.length) return "No records";
-
-  return entries
-    .sort((a,b)=>a[0].localeCompare(b[0]))
-    .map(([d,v])=>{
-      const total = (v.present||0)+(v.absent||0);
-      return `
-        <div>
-          ${d} → ${v.present||0}/${total}
-        </div>
-      `;
-    }).join("");
+async function toggleAttendanceCalendar(subjectId) {
+  const wrap = document.getElementById("cal_wrap_" + subjectId);
+  if (!wrap) return;
+  if (wrap.style.display === "none") {
+    if (!window.attViewDate[subjectId]) window.attViewDate[subjectId] = new Date();
+    wrap.style.display = "block";
+    await refreshCalendarView(subjectId);
+  } else { wrap.style.display = "none"; }
 }
 
-/* ===================== END OF PART 3 ===================== */
+async function changeMonth(subjectId, offset) {
+  const d = window.attViewDate[subjectId];
+  d.setMonth(d.getMonth() + offset);
+  await refreshCalendarView(subjectId);
+}
+
+async function refreshCalendarView(subjectId) {
+  const wrap = document.getElementById("cal_wrap_" + subjectId);
+  const att = await getAttendance();
+  const hist = att[subjectId] || {};
+  const viewDate = window.attViewDate[subjectId];
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  let html = `
+    <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:8px">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px">
+        <button class="btn tiny" onclick="changeMonth('${subjectId}', -1)">◀</button>
+        <strong style="font-size:13px">${viewDate.toLocaleString('default', { month: 'short' })} ${year}</strong>
+        <button class="btn tiny" onclick="changeMonth('${subjectId}', 1)">▶</button>
+      </div>
+      <div style="display:grid; grid-template-columns:repeat(7, 1fr); gap:3px; text-align:center">
+        ${['S','M','T','W','T','F','S'].map(d => `<div style="font-size:9px; opacity:0.4">${d}</div>`).join('')}
+        ${Array(firstDay).fill(0).map(() => `<div></div>`).join('')}
+        ${Array.from({length: daysInMonth}, (_, i) => {
+          const day = i + 1;
+          const key = `${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+          const dots = (hist[key] || []).map((v, idx) => {
+            const col = v.status === "present" ? "#00ff88" : v.status === "absent" ? "#ff4444" : "#ffcc00";
+            return `<span style="color:${col}; cursor:pointer" onclick="editAttendanceEntry('${subjectId}','${key}',${idx})">●</span>`;
+          }).join("");
+          return `<div style="font-size:10px; padding:4px; border:1px solid rgba(255,255,255,0.05)">${day}<br>${dots || '·'}</div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+  wrap.innerHTML = html;
+}
+
+function editAttendanceEntry(subjectId, date, index) {
+  const choice = prompt("Action: present / absent / noclass / delete");
+  if (!choice) return;
+  const c = choice.toLowerCase();
+  if (c === "delete") deleteAttendanceEntry(subjectId, date, index);
+  else if (["present", "absent", "noclass"].includes(c)) updateAttendanceEntry(subjectId, date, index, c);
+}
+
+async function updateAttendanceEntry(subjectId, date, index, status) {
+  const att = await getAttendance();
+  if (att[subjectId]?.[date]?.[index]) {
+    att[subjectId][date][index].status = status;
+    await saveAttendance(att);
+    await refreshCalendarView(subjectId);
+    renderAttendance();
+  }
+}
+
+async function deleteAttendanceEntry(subjectId, date, index) {
+  const att = await getAttendance();
+  if (att[subjectId]?.[date]) {
+    att[subjectId][date].splice(index, 1);
+    if (att[subjectId][date].length === 0) delete att[subjectId][date];
+    await saveAttendance(att);
+    await refreshCalendarView(subjectId);
+    renderAttendance();
+  }
+}
 /* =========================================================
    ui.js — STUDENT DASHBOARD
    PART 4 / 4
    ---------------------------------------------------------
-   Contents:
-   - Timetable (subjects from Academics)
-   - Events
-   - Exams
-   - PDF Viewer
-   - Init / Bootstrapping
+   Updates:
+   - Fixed Timetable to work with 5-slot Marks structure
+   - Simplified Init script
 ========================================================= */
 
-/* =========================================================
-   TIMETABLE
-   - Subject dropdown fixed from Academics
-   - Add / remove classes
-========================================================= */
+/* ===================== TIMETABLE ===================== */
 
-async function renderTimetable(){
+async function renderTimetable() {
   const sec = document.getElementById("timetable");
-  if(!sec) return;
+  if (!sec) return;
 
-  const acad = await getAcademics();
-  const tt   = await getTimetable();
+  const acad = await getAcademics() || { subjects: [] };
+  const tt = await getTimetable() || {};
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-  const days = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday"
-  ];
-
-  sec.innerHTML = `<h2>Timetable</h2>`;
+  let html = `<h2>Weekly Timetable</h2>`;
 
   days.forEach(day => {
-    const list = tt[day] || [];
+    const classes = tt[day] || [];
+    // Corrected to pull names from the updated academics structure
+    const subOptions = acad.subjects.map(s => `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`).join("");
 
-    const subjectOptions = acad.subjects.length
-      ? acad.subjects.map(s =>
-          `<option value="${escapeHtml(s.name)}">${escapeHtml(s.name)}</option>`
-        ).join("")
-      : `<option disabled>No subjects</option>`;
-
-    sec.innerHTML += `
+    html += `
       <div class="card">
-        <strong>${day}</strong>
-
-        <div style="margin-top:8px">
-          <input id="${day}_time" placeholder="Time (9-10)">
-          <select id="${day}_sub">
-            ${subjectOptions}
+        <strong style="color:#00ff88">${day}</strong>
+        <div style="margin-top:10px; display:flex; gap:5px; flex-wrap:wrap">
+          <input id="${day}_time" placeholder="Time" style="width:80px">
+          <select id="${day}_sub" style="flex:1">
+            ${subOptions || '<option disabled>Add Subjects in Marks first</option>'}
           </select>
-          <input id="${day}_room" placeholder="Room">
-          <button class="btn small" onclick="addClass('${day}')">Add</button>
+          <input id="${day}_room" placeholder="Room" style="width:70px">
+          <button class="btn tiny" onclick="addClass('${day}')">Add</button>
         </div>
-
         <div style="margin-top:10px">
-          ${list.length
-            ? list.map((c, i) => `
-                <div class="list-row">
-                  <span>
-                    ${escapeHtml(c.time)} ·
-                    ${escapeHtml(c.subject)} ·
-                    ${escapeHtml(c.room || "")}
-                  </span>
-                  <button class="btn tiny"
-                    onclick="removeClass('${day}', ${i})">
-                    Del
-                  </button>
-                </div>
-              `).join("")
-            : `<div style="opacity:.7">No classes</div>`
-          }
+          ${classes.map((c, i) => `
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:5px 0; border-bottom:1px solid rgba(255,255,255,0.05)">
+              <span><b>${c.time}</b> | ${c.subject} <small style="opacity:0.6">(${c.room || 'N/A'})</small></span>
+              <button class="btn tiny" onclick="removeClass('${day}', ${i})" style="color:#ff4444; border:none; background:none">✕</button>
+            </div>
+          `).join("")}
         </div>
       </div>
     `;
   });
+  sec.innerHTML = html;
 }
 
-async function addClass(day){
-  const timeEl = document.getElementById(day + "_time");
-  const subEl  = document.getElementById(day + "_sub");
-  const roomEl = document.getElementById(day + "_room");
+async function addClass(day) {
+  const timeInp = document.getElementById(day + "_time");
+  const subInp = document.getElementById(day + "_sub");
+  const roomInp = document.getElementById(day + "_room");
 
-  if(!timeEl || !subEl) return;
-  if(!timeEl.value || !subEl.value) return;
+  if (!timeInp.value || !subInp.value) return;
 
   const tt = await getTimetable();
-  tt[day] ??= [];
-
-  tt[day].push({
-    time: timeEl.value,
-    subject: subEl.value,
-    room: roomEl ? roomEl.value : ""
+  tt[day] = tt[day] || [];
+  tt[day].push({ 
+    time: timeInp.value, 
+    subject: subInp.value, 
+    room: roomInp.value || "" 
   });
-
+  
   await saveTimetable(tt);
   renderTimetable();
 }
 
-async function removeClass(day, index){
+async function removeClass(day, index) {
   const tt = await getTimetable();
-  if(!tt[day]) return;
-
-  tt[day].splice(index, 1);
-  await saveTimetable(tt);
-  renderTimetable();
+  if (tt[day]) {
+    tt[day].splice(index, 1);
+    await saveTimetable(tt);
+    renderTimetable();
+  }
 }
 
-/* =========================================================
-   EVENTS
-========================================================= */
+/* ===================== EVENTS & EXAMS ===================== */
 
-async function renderEvents(){
+async function renderEvents() {
   const sec = document.getElementById("events");
-  if(!sec) return;
-
-  const events = await getEvents();
-
+  const events = await getEvents() || [];
   sec.innerHTML = `
     <h2>Events</h2>
-
     <div class="card">
-      <input id="ev_name" placeholder="Event name">
+      <input id="ev_name" placeholder="Event Name">
       <input id="ev_date" type="date">
       <button class="btn small" onclick="addEvent()">Add Event</button>
     </div>
-
-    <div class="card">
-      ${events.length
-        ? events.map((e, i) => `
-            <div class="list-row">
-              <span>
-                ${escapeHtml(e.date)} · ${escapeHtml(e.name)}
-              </span>
-              <button class="btn tiny"
-                onclick="removeEvent(${i})">
-                Del
-              </button>
-            </div>
-          `).join("")
-        : "No events added"
-      }
-    </div>
+    ${events.map((e, i) => `
+      <div class="card" style="display:flex; justify-content:space-between">
+        <span>${e.date} — <b>${escapeHtml(e.name)}</b></span>
+        <button class="btn tiny" onclick="deleteEvent(${i})">✕</button>
+      </div>
+    `).join("")}
   `;
 }
 
-async function addEvent(){
-  const nameEl = document.getElementById("ev_name");
-  const dateEl = document.getElementById("ev_date");
-
-  if(!nameEl || !dateEl) return;
-  if(!nameEl.value.trim() || !dateEl.value) return;
-
-  const events = await getEvents();
-  events.push({
-    name: nameEl.value.trim(),
-    date: dateEl.value
-  });
-
-  await saveEvents(events);
-  renderEvents();
-}
-
-async function removeEvent(index){
-  const events = await getEvents();
-  events.splice(index, 1);
-  await saveEvents(events);
-  renderEvents();
-}
-
-/* =========================================================
-   EXAMS
-========================================================= */
-
-async function renderExams(){
+async function renderExams() {
   const sec = document.getElementById("exams");
-  if(!sec) return;
-
-  const exams = await getExams();
-
+  const exams = await getExams() || [];
   sec.innerHTML = `
     <h2>Exams</h2>
-
     <div class="card">
       <input id="ex_sub" placeholder="Subject">
       <input id="ex_date" type="date">
-      <input id="ex_time" placeholder="Time">
-      <input id="ex_venue" placeholder="Venue">
       <button class="btn small" onclick="addExam()">Add Exam</button>
     </div>
-
-    <div class="card">
-      ${exams.length
-        ? exams.map((x, i) => `
-            <div class="list-row">
-              <span>
-                ${escapeHtml(x.date)} ·
-                ${escapeHtml(x.subject)} ·
-                ${escapeHtml(x.time || "")} ·
-                ${escapeHtml(x.venue || "")}
-              </span>
-              <button class="btn tiny"
-                onclick="removeExam(${i})">
-                Del
-              </button>
-            </div>
-          `).join("")
-        : "No exams added"
-      }
-    </div>
+    ${exams.map((e, i) => `
+      <div class="card" style="display:flex; justify-content:space-between">
+        <span>${e.date} — <b>${escapeHtml(e.subject)}</b></span>
+        <button class="btn tiny" onclick="deleteExam(${i})">✕</button>
+      </div>
+    `).join("")}
   `;
 }
 
-async function addExam(){
-  const subEl   = document.getElementById("ex_sub");
-  const dateEl  = document.getElementById("ex_date");
-  const timeEl  = document.getElementById("ex_time");
-  const venueEl = document.getElementById("ex_venue");
+/* ===================== PDF & INIT ===================== */
 
-  if(!subEl || !dateEl) return;
-  if(!subEl.value.trim() || !dateEl.value) return;
-
-  const exams = await getExams();
-
-  exams.push({
-    subject: subEl.value.trim(),
-    date: dateEl.value,
-    time: timeEl ? timeEl.value : "",
-    venue: venueEl ? venueEl.value : ""
-  });
-
-  await saveExams(exams);
-  renderExams();
-}
-
-async function removeExam(index){
-  const exams = await getExams();
-  exams.splice(index, 1);
-  await saveExams(exams);
-  renderExams();
-}
-
-/* =========================================================
-   PDF VIEWER
-========================================================= */
-
-function openPdfViewer(){
-  const frame = document.getElementById("pdfFrame");
+function openPdfViewer() {
   const modal = document.getElementById("pdfModal");
-  if(!frame || !modal) return;
-
+  const frame = document.getElementById("pdfFrame");
   frame.src = "assets/4th-sem-calendar.pdf";
   modal.classList.remove("hidden");
 }
 
-function closePdfViewer(){
-  const frame = document.getElementById("pdfFrame");
-  const modal = document.getElementById("pdfModal");
-  if(!frame || !modal) return;
-
-  frame.src = "";
-  modal.classList.add("hidden");
+function closePdfViewer() {
+  document.getElementById("pdfModal").classList.add("hidden");
 }
 
-/* =========================================================
-   INIT / BOOTSTRAP
-========================================================= */
-
-(async function init(){
-  const u = localStorage.getItem("user");
-
-  if(u){
-    const auth = document.getElementById("auth-screen");
-    const dash = document.getElementById("dashboard");
-    const top  = document.getElementById("topbar");
-    const name = document.getElementById("user-name");
-
-    if(auth) auth.classList.add("hidden");
-    if(dash) dash.classList.remove("hidden");
-    if(top)  top.classList.remove("hidden");
-    if(name) name.innerText = u;
-
-    /* default landing */
-    renderHome();
+// BOOTSTRAP: Start the App
+(async function init() {
+  const user = localStorage.getItem("user");
+  if (user) {
+    document.getElementById("auth-screen").classList.add("hidden");
+    document.getElementById("topbar").classList.remove("hidden");
+    document.getElementById("dashboard").classList.remove("hidden");
+    document.getElementById("user-name").innerText = user;
+    renderHome(); 
   }
 })();
-
-/* ===================== END OF PART 4 ===================== */
